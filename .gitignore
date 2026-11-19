@@ -147,3 +147,13 @@ Desktop.ini
 
 # Cargo.lock、uv.lock、pubspec.lock、Podfile.lock、package-lock.json、
 # pnpm-lock.yaml、yarn.lock、构建清单、工具链配置、Wrapper及根目录AGENTS.md应纳入版本控制
+
+# 交接包与本地演示：不随仓库公开
+# handoff/ 含跨机器交接文档与内部路径；HANDOFF.md 为过期交接快照；
+# web-demo/ 为模拟原型演示（真实 V1 未完成），仅本地迭代
+handoff/
+HANDOFF.md
+web-demo/
+
+# 数据集不进仓库：建库后数据落在本地 sqlite
+docs/data/*.csv
