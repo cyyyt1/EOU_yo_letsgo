@@ -159,3 +159,6 @@ web-demo/
 docs/data/*.csv
 docs/data/fragment-import.sql
 docs/data/place-alias-import.sql
+
+# 发行库随包分发：唯一需要入库的 sqlite
+!docs/data/schema-dist.sqlite
