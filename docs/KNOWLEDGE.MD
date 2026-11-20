@@ -14,19 +14,20 @@
 | K2 | 检索 | V1 SQLite 结构化查询（place_id + fragment_type）+ 别名内存匹配；**不启用 FTS/R\*Tree**（K17），无 embedding/向量服务；V2 多城扩展再评估（DESIGN §5.2 现行） |
 | K3 | 权利边界 | 事实抽取 + 原创表达；逐源规则见 §6 |
 | K4 | 试点 | 杭州 working example，三大遗产锚点（西湖文化景观/良渚古城/大运河）+ 类别覆盖；定版待资料权利核查 + 实测便利（DESIGN 城市未定版） |
-| K5 | Schema | **发行库 4 表 29 列**（§4.1），策展库为其超集（§4.4）；取代原「五表 + 补缺口」 |
+| K5 | Schema | **发行库 4 表 30 列**（§4.1），策展库为其超集（§4.4）；取代原「五表 + 补缺口」 |
 | K6 | 策展工具 | **STORM 起草引擎**（Python 内容工具层，许可/依赖待核）+ 自建「长文→片段→分类→抽来源→人审入库」管道 |
 | K7 | 策展源 | 千帆百科摘要 API（0.01 元/次）+ 博查（0.036 元/次）+ Wikidata/政府名录/古籍 + Wikipedia 摘要（仅线索）；团队承担成本，非用户 BYOK |
 | K8 | 内容分类 | 12 层（§5）；史实/传说分类标记 + 争议标来源 |
 | K9 | 审核 | 成员 C 主责（DESIGN §9.1）；清单：来源核验/权利检查/分类/争议标记/时效核验日 |
 | K10 | 运行时接口 | FC 工具返回讲稿/要点 + 来源标题/链接/署名（衔接 VOICE D2/D3）；热点追问走默认供应商 BYOK 搜索（DESIGN §3.5） |
-| K11 | 双库分离 | **策展库（离线，含审核流程）与发行库（手机端，只装已审内容）两套 schema**。发行库不可修改审核状态，编辑元数据一律留在策展侧 |
+| K11 | 双库分离 | **策展库（离线，含审核流程）与发行库（手机端，只装已审内容）两套 schema**。发行库不可修改审核状态，编辑元数据一律留在策展侧；唯一例外是 `place_alias.confidence`（K18），只读随包下发 |
 | K12 | 版本与交付 | **单生效包**：无 `package_uid`/`is_active`/复合外键，导入即整库替换；**预置 SQLite 资产**随 APK 打包（构建期由策展库导出，首启复制到 app data），V1 不做运行期导入 UI |
-| K13 | 精简 | 发行库由 7 表 71 列压到 4 表 29 列；合并 `topic`+`content_type`→`fragment_type`，删双语列、代理键、坐标逐行标记（导入归一化）、`source_type` |
+| K13 | 精简 | 发行库由 7 表 71 列压到 4 表 30 列；合并 `topic`+`content_type`→`fragment_type`，删双语列、代理键、坐标逐行标记（导入归一化）、`source_type` |
 | K14 | 时效并入片段 | 删除 `timeliness` 表：时效信息作为 `fragment_type='practical'` 的条目，自带 `valid_to`/`verified_at`；**一条 practical 只讲一个话题** |
 | K15 | 来源内联 | 不建 `source` 表；`fragment` 内联 `source_title/source_url/attribution/allow_cloud_llm` 四列，**一条讲稿引一个主源**（策展侧可多源，导出时取主源） |
 | K16 | 讲稿用途 | 标准/精简讲稿**仅作离线文字降级**（离线仅文字，不接系统 TTS，无自由问答）；**讲稿不进联网 prompt**，联网讲解只喂 `key_points` + 来源 |
 | K17 | 检索结构 | 10–20 个景点规模下不建 `fragment_fts`/`place_alias_fts`/`place_rtree` 及同步触发器；别名启动时载入内存哈希表，附近候选全表扫描。扩到数百点位再评估 |
+| K18 | 别名置信度 | `place_alias` 增加 `confidence`（`auto`/`review`/`manual`），随发行库下发；`review` 行分发前须人工确认，端上只读不改写。这是 K11「只装已审内容」的显式例外 |
 
 ## 2. 架构总览
 
@@ -69,7 +70,7 @@ flowchart TD
 - **策展库独立存在**（§4.4），只跑在团队开发机，含审核状态、原始快照、草稿与多源关联；它是发行库的上游，不是运行期组件。
 - 个人记忆也在本地 SQLite，与知识库**分表、分检索范围**（DESIGN §6.3）；知识库是公共事实，记忆是个人数据。
 
-## 4. 数据模型（发行库 4 表 29 列，2026-11-18 定稿）
+## 4. 数据模型（发行库 4 表 30 列，2026-11-18 定稿；2026-11-19 v2 增 `place_alias.confidence`）
 
 > 本节取代 K5 原先的「五表 + 补缺口」。依据 K11（双库分离）、K12（单生效包 + 预置资产）、K13（精简）、K14（时效并入）、K15（来源内联）、K17（不启用 FTS）。
 
@@ -77,7 +78,7 @@ flowchart TD
 
 ```sql
 PRAGMA foreign_keys = ON;
-PRAGMA user_version = 1;                 -- 发行库结构版本
+PRAGMA user_version = 2;                 -- 发行库结构版本；v2 增 place_alias.confidence
 
 -- 1. 包清单：单行，换包即整库替换
 CREATE TABLE content_package (
@@ -107,9 +108,12 @@ CREATE TABLE place (
 
 -- 3. 别名：语音「名字→点位」的反向索引
 CREATE TABLE place_alias (
-  place_id TEXT NOT NULL REFERENCES place(place_id) ON DELETE CASCADE,
+  place_id   TEXT NOT NULL REFERENCES place(place_id) ON DELETE CASCADE,
                                          -- 点位ID
-  alias    TEXT NOT NULL,                -- 别名 黄妃塔 / leifengta
+  alias      TEXT NOT NULL,              -- 别名 黄妃塔 / leifengta
+  confidence TEXT NOT NULL DEFAULT 'auto'
+               CHECK (confidence IN ('auto','review','manual')),
+                                         -- auto 自动生成 / review 待复核 / manual 人工指定
   PRIMARY KEY (place_id, alias)
 );
 CREATE UNIQUE INDEX ux_place_alias ON place_alias(alias);
@@ -149,11 +153,11 @@ CREATE INDEX idx_fragment_place ON fragment(place_id);
 | --- | --- |
 | 五表 → 四表 | 删 `timeliness`（并入 `fragment` 的 `practical`）；不建独立 `source` 表 |
 | `poi` → `place` | 加 `parent_id` + `level`，支持 景区→景点→点位 三层（K13） |
-| 别名表 7 列 → 2 列 | 自然主键 + 全局唯一索引，删代理键/类型/首选标记 |
+| 别名表 7 列 → 3 列 | 自然主键 + 全局唯一索引，删代理键/类型/首选标记；保留 `confidence`（K18） |
 | 删 `schema_version` 列 | 改用 `PRAGMA user_version` |
 | 删坐标系逐行标记 | 导入时归一为 GCJ-02；原值留策展库（§4.4） |
 | 删双语列 | V1 中文单语，`name_en`/`lang` 删除 |
-| 删审核/置信度/生成溯源 | 属策展库，发行库只装已审内容（K11） |
+| 删审核/生成溯源 | 审核流程与生成溯源留在策展库；别名置信度例外随包下发（K18） |
 | 删 FTS / R*Tree | 10–20 点位规模不需要（K17） |
 
 ### 4.3 三条硬约束
@@ -171,6 +175,7 @@ DDL 的复合 `CHECK` 已强制第 1 条的存储形态；第 2、3 条属策展
 | 对象 | 发行库 | 策展库增量 |
 | --- | --- | --- |
 | `place` | 7 列 | + `category` 类别、`address` 地址、`coord_system` 原始坐标系、`src_lat`/`src_lon` 原始坐标 |
+| `place_alias` | 3 列 | 无增量（`confidence` 随包下发，K18） |
 | `fragment` | 14 列 | + `review_status`、`confidence`、`authoring`、`model_ref`、`created_at`、`updated_at` |
 | `source`（策展库独有） | — | `source_id, title, url, license_code, attribution, source_type, collected_at, reviewer, allow_rewrite, allow_tts, allow_redistribute, allow_cloud_llm` |
 | `fragment_source`（策展库独有） | — | `fragment_id, source_id, locator, quote`；支持一稿多源 |
@@ -185,6 +190,7 @@ DDL 的复合 `CHECK` 已强制第 1 条的存储形态；第 2、3 条属策展
 3. 坐标：`src_lat/src_lon + coord_system` 归一为 GCJ-02 写入 `place.lat/lon`。
 4. `content_short`：脚本抽取标准稿首两句生成。
 5. `valid_to`/`verified_at`：仅 `practical` 条目保留，其余置空。
+6. 别名：全部写入，`confidence` 原样保留（K18）；`review` 行分发前须人工确认。
 
 `allow_redistribute` 只活在策展侧（导出时的筛子）；`allow_cloud_llm` 必须跟到手机上，因为「可离线展示、不可传第三方模型」是真实授权组合。
 
@@ -284,7 +290,7 @@ flowchart LR
 
 | DESIGN 位置 | 变更 | 原因 |
 | --- | --- | --- |
-| §6.1 五表 | 改为发行库 4 表 29 列（§4.1）+ 策展库超集（§4.4）；删时效表并入 `fragment.practical`；来源内联四列 | K11–K15 |
+| §6.1 五表 | 改为发行库 4 表 30 列（§4.1）+ 策展库超集（§4.4）；删时效表并入 `fragment.practical`；来源内联四列；别名增 `confidence`（K18） | K11–K15、K18 |
 | §6.2 坐标系 | 「转换一次并保留原值」改为「策展侧保留原值，发行侧归一为 GCJ-02」 | K13 |
 | §4.1 检索 | 「SQLite 结构化查询/FTS」改为「结构化查询 + 内存别名匹配，V1 不启用 FTS/R\*Tree」 | K17 |
 | §8.1 交付物 | 内容包形态定为「构建期由策展库导出、随 APK 预置的 SQLite 资产」；独立授权包同格式替换文件，V1 不做导入 UI | K12 |

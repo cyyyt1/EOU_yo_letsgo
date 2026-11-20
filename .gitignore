@@ -157,3 +157,5 @@ web-demo/
 
 # 数据集不进仓库：建库后数据落在本地 sqlite
 docs/data/*.csv
+docs/data/fragment-import.sql
+docs/data/place-alias-import.sql

@@ -1,5 +1,6 @@
 PRAGMA foreign_keys = ON;
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;
+-- user_version 2：place_alias 增加 confidence（auto/review/manual）
 
 -- 1. 包清单：单行，换包即整库替换
 CREATE TABLE content_package (
@@ -29,9 +30,12 @@ CREATE TABLE place (
 
 -- 3. 别名：语音「名字→点位」的反向索引
 CREATE TABLE place_alias (
-  place_id TEXT NOT NULL REFERENCES place(place_id) ON DELETE CASCADE,
+  place_id   TEXT NOT NULL REFERENCES place(place_id) ON DELETE CASCADE,
                                          -- 点位ID
-  alias    TEXT NOT NULL,                -- 别名 黄妃塔 / leifengta
+  alias      TEXT NOT NULL,              -- 别名 黄妃塔 / leifengta
+  confidence TEXT NOT NULL DEFAULT 'auto'
+               CHECK (confidence IN ('auto','review','manual')),
+                                         -- auto 自动生成 / review 待复核 / manual 人工指定
   PRIMARY KEY (place_id, alias)
 );
 CREATE UNIQUE INDEX ux_place_alias ON place_alias(alias);
